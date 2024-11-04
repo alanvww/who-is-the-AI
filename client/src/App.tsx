@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { io, Socket } from 'socket.io-client';
+import { config } from './config';
+
 
 interface Player {
   id: string;
@@ -46,7 +48,10 @@ const ChatApp = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const newSocket = io('http://localhost:3000');
+    const serverUrl = config.getServerUrl();
+    console.log('Connecting to server at:', serverUrl);
+    
+    const newSocket = io(serverUrl);
     setSocket(newSocket);
 
     newSocket.on('connection_rejected', (data) => {
@@ -237,7 +242,7 @@ const ChatApp = () => {
 
                     <div className="mt-4 space-y-4">
                       <h3 className="font-semibold">All Responses:</h3>
-                      {gameResult.responses.map((resp, index) => (
+                      {gameResult.responses.map((resp) => (
                         <div
                           key={resp.playerId}
                           className={`p-4 rounded-lg ${resp.isAI ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 border border-gray-200'

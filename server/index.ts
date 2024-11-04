@@ -11,6 +11,25 @@ const MAX_REAL_PLAYERS = 16;
 const DEFAULT_PORT = 3000;
 const OLLAMA_URL = 'http://127.0.0.1:11434/api/generate';
 
+// CORS Configuration
+const getAllowedOrigins = () => {
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  
+  if (nodeEnv === 'development') {
+    // In development, allow both localhost and IP-based connections
+    return [
+      'http://localhost:5173',    // Vite default
+      'http://127.0.0.1:5173',   // Localhost IP
+      /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:5173$/,  // Local network IPs
+      /^http:\/\/172\.\d{1,3}\.\d{1,3}\.\d{1,3}:5173$/,  // Docker network
+      /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:5173$/    // Other private networks
+    ];
+  }
+
+  // In production, use your production domain
+  return ['https://your-production-domain.com'];
+};
+
 // Types
 interface Player {
   id: string;
@@ -193,8 +212,32 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST"]
+    origin: (origin, callback) => {
+      const allowedOrigins = getAllowedOrigins();
+      
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      // Check if the origin matches any of our allowed origins
+      const isAllowed = allowedOrigins.some(allowedOrigin => {
+        if (allowedOrigin instanceof RegExp) {
+          return allowedOrigin.test(origin);
+        }
+        return allowedOrigin === origin;
+      });
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        console.warn(`Origin ${origin} not allowed by CORS`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization']
   }
 });
 
@@ -203,12 +246,41 @@ const playerManager = new PlayerManager();
 const gameManager = new GameManager(playerManager);
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    const allowedOrigins = getAllowedOrigins();
+    
+    // Allow requests with no origin
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // Check if the origin matches any of our allowed origins
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return allowedOrigin === origin;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Middleware
 app.use(express.json());
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('New connection:', socket.id);
+  console.log('Client connected from:', socket.handshake.headers.origin);
 
   if (!playerManager.canAddPlayer() && !playerManager.getPlayer(socket.id)) {
     socket.emit('connection_rejected', { reason: 'Server is full' });
@@ -294,10 +366,27 @@ io.on('connection', (socket) => {
   });
 });
 
+// Error handling middleware
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  console.error('Error:', err.message);
+  console.error('Origin:', req.headers.origin);
+  res.status(500).json({ 
+    error: 'Server error', 
+    message: err.message,
+    // Don't send stack trace in production
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+  });
+});
+
 // Start server
 const port = process.env.PORT ? parseInt(process.env.PORT) : DEFAULT_PORT;
-httpServer.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+const host = process.env.HOST || '0.0.0.0'; // Listen on all network interfaces
+
+httpServer.listen(port, host, () => {
+  console.log(`Server running on http://${host}:${port}`);
+  console.log(`Maximum players: ${MAX_REAL_PLAYERS} real + 1 AI player`);
+  console.log('Allowed origins:', getAllowedOrigins());
+  console.log('NODE_ENV:', process.env.NODE_ENV);
 });
 
 export default app;
