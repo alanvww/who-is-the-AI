@@ -73,7 +73,7 @@ class AIService {
         },
         body: JSON.stringify({
           model: 'llama3.1',
-          prompt: `As an AI player in a game where players describe their favorite foods, please provide a natural, human-like response to this prompt: ${prompt}. Keep the response concise and short.`,
+          prompt: `As an AI player pretending to be a human player in a game where the human players will try to identify the AI among them, please provide a short, simple, discussion group style, 1 sentence response to this prompt: ${prompt}.`,
           stream: false
         })
       });
